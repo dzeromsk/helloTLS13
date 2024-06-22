@@ -1,55 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"crypto/sha256"
-	"encoding/binary"
-	"encoding/hex"
-	"errors"
 	"fmt"
-	"net"
 )
 
-func tls13(conn net.Conn) {
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Println("Recovered in f", r)
-		}
-	}()
-	println("open")
-	defer println("close")
-	defer conn.Close()
-	s := NewKTLSServer(conn)
-	if handshake(s) {
-		for s.Scan() {
-			println(hex.Dump(s.Bytes()))
-			s.WriteEncrypted(bytes.Clone(defaultResponse))
-		}
-	}
-	if err := s.Err(); err != nil {
-		panic(err)
-	}
-}
-
-var errBrokenRecord = errors.New("broken record")
-
-func scanRecord(data []byte, atEOF bool) (advance int, token []byte, err error) {
-	if len(data) >= 5 {
-		// Calculate record size
-		size := 5 + int(binary.BigEndian.Uint16(data[3:5]))
-		if len(data) >= size {
-			return size, data[:size], nil
-		}
-	}
-	// If we're at EOF, we have a final, non-empty, non-terminated record, return error
-	if atEOF && len(data) > 0 {
-		return len(data), nil, errBrokenRecord
-	}
-	// Request more data
-	return 0, nil, nil
-}
-
-func handshake(s *KTLSServer) bool {
+func handshake(s *ServerConn) bool {
 	h := sha256.New()
 	var client clientHello
 	if s.Scan() {
@@ -128,7 +84,7 @@ func handshake(s *KTLSServer) bool {
 	return false
 }
 
-func finish(s *KTLSServer, hs, h4 []byte) bool {
+func finish(s *ServerConn, hs, h4 []byte) bool {
 	if s.Scan() {
 		if decodeHandshakeFinished(s.Bytes()) {
 			println("finish")
